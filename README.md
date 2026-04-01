@@ -358,8 +358,7 @@ npm run preview
 ## 👤 Author
 
 **Pranav** — VIT Bhopal (Registration: 23BCE10563)  
-Project: Transformative Urbanism · EPICS Phase II  
-Supervisor: Mrs. Pavithra R.
+.
 
 ---
 
