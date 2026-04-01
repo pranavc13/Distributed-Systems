@@ -16,30 +16,55 @@ function hexToRgb(hex){ return {r:parseInt(hex.slice(1,3),16),g:parseInt(hex.sli
 function ca(hex,a){ const {r,g,b}=hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; }
 
 // ═══════════════════════════════════════════════════════════
-// CANVAS ENGINE
+// CANVAS ENGINE — fully responsive, scales to container width
 // ═══════════════════════════════════════════════════════════
 function CanvasScene({ width=700, height=320, draw, sceneKey="" }) {
-  const ref = useRef(null);
-  const stateRef = useRef({});
+  const wrapRef   = useRef(null);
+  const canvasRef = useRef(null);
+  const stateRef  = useRef({});
+  const rafRef    = useRef(null);
+
   useEffect(() => {
-    stateRef.current = {}; // reset state on remount
-    const canvas = ref.current; if(!canvas) return;
+    stateRef.current = {};
+    const canvas = canvasRef.current;
+    const wrap   = wrapRef.current;
+    if(!canvas || !wrap) return;
     const ctx = canvas.getContext("2d");
-    const dpr = window.devicePixelRatio||1;
-    canvas.width = width*dpr; canvas.height = height*dpr;
-    canvas.style.width = width+"px"; canvas.style.height = height+"px";
-    ctx.scale(dpr,dpr);
-    let raf, last=0;
-    const loop = ts => {
-      const dt = Math.min(ts-last, 64); last=ts;
-      ctx.clearRect(0,0,width,height);
-      draw(ctx, dt, stateRef.current, width, height);
-      raf = requestAnimationFrame(loop);
+    const dpr = window.devicePixelRatio || 1;
+
+    const resize = () => {
+      const cw    = wrap.clientWidth || width;
+      const scale = Math.min(cw / width, 1);       // never upscale past design width
+      const pw    = Math.round(width  * scale);
+      const ph    = Math.round(height * scale);
+      canvas.width  = pw * dpr;
+      canvas.height = ph * dpr;
+      canvas.style.width  = pw + "px";
+      canvas.style.height = ph + "px";
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(dpr * scale, dpr * scale);          // logical coords always = design 700×H
     };
-    raf = requestAnimationFrame(t=>{ last=t; raf=requestAnimationFrame(loop); });
-    return () => cancelAnimationFrame(raf);
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+
+    let last = 0;
+    const loop = ts => {
+      const dt = Math.min(ts - last, 64); last = ts;
+      ctx.clearRect(0, 0, width, height);
+      draw(ctx, dt, stateRef.current, width, height);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(t => { last=t; rafRef.current=requestAnimationFrame(loop); });
+    return () => { cancelAnimationFrame(rafRef.current); ro.disconnect(); };
   }, [sceneKey]); // eslint-disable-line
-  return <canvas ref={ref} style={{width,height,maxWidth:"100%",display:"block",borderRadius:"8px"}}/>;
+
+  return (
+    <div ref={wrapRef} style={{width:"100%", lineHeight:0}}>
+      <canvas ref={canvasRef} style={{display:"block", borderRadius:"8px", maxWidth:"100%"}}/>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -736,12 +761,14 @@ function FallacyCanvas() {
 // ═══════════════════════════════════════════════════════════
 function SceneCard({ title, children }) {
   return (
-    <div className="bg-slate-950 border border-slate-600 rounded-xl overflow-hidden">
-      <div className="px-4 py-2 border-b border-slate-700 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"/>
-        <span className="text-xs font-mono text-slate-200">{title}</span>
+    <div style={{background:"#050f1f",border:"1px solid #475569",borderRadius:"12px",overflow:"hidden",width:"100%"}}>
+      <div style={{padding:"6px 14px",borderBottom:"1px solid #334155",display:"flex",alignItems:"center",gap:"8px"}}>
+        <span style={{width:"7px",height:"7px",borderRadius:"50%",background:"#22d3ee",display:"inline-block",animation:"pulse 2s infinite"}}/>
+        <span style={{fontSize:"11px",fontFamily:"monospace",color:"#e2e8f0",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</span>
       </div>
-      <div className="flex justify-center bg-[#020b18] p-2">{children}</div>
+      <div style={{background:"#020b18",padding:"8px",overflowX:"hidden"}}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -751,10 +778,10 @@ function SceneCard({ title, children }) {
 // ═══════════════════════════════════════════════════════════
 function IntroSection() {
   return (
-    <div className="space-y-5">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-cyan-400 font-mono text-lg mb-3">What is a Distributed System?</h2>
-        <p className="text-white leading-relaxed text-sm">
+    <div className="space-y-3 sm:space-y-5">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 sm:p-6">
+        <h2 className="text-cyan-400 font-mono text-base sm:text-lg mb-2 sm:mb-3">What is a Distributed System?</h2>
+        <p className="text-white leading-relaxed text-xs sm:text-sm">
           A <span className="text-cyan-400 font-semibold">distributed system</span> is a collection of independent
           computers that appears to its users as a single coherent system. Machines communicate only by passing
           messages, yet together they solve problems no single machine could — hiding internal complexity through{" "}
@@ -778,11 +805,11 @@ function TypesSection() {
   ];
   const scenes={cluster:<ClusterCanvas/>,grid:<GridCanvas/>,cloud:<CloudCanvas/>,p2p:<P2PCanvas/>};
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex gap-2 flex-wrap overflow-x-auto pb-1 -mx-1 px-1">
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
-            className={`px-4 py-2 rounded-lg font-mono text-sm border transition-all duration-150 ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-mono text-xs sm:text-sm border transition-all duration-150 ${
               tab===t.id?"bg-cyan-500/20 border-cyan-500 text-cyan-300":"bg-slate-800/80 border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white"
             }`}>{t.label}</button>
         ))}
@@ -796,11 +823,11 @@ function TypesSection() {
 function ModelsSection() {
   const [mode, setMode] = useState("cs");
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <div className="flex gap-2">
         {[["cs","Client-Server"],["dc","Decentralized"]].map(([k,v])=>(
           <button key={k} onClick={()=>setMode(k)}
-            className={`px-4 py-2 rounded-lg font-mono text-sm border transition-all ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-mono text-xs sm:text-sm border transition-all ${
               mode===k?"bg-purple-500/20 border-purple-500 text-purple-300":"bg-slate-800/80 border-slate-700 text-slate-200 hover:border-purple-600 hover:text-white"
             }`}>{v}</button>
         ))}
@@ -808,12 +835,12 @@ function ModelsSection() {
       <SceneCard title={`live · ${mode==="cs"?"client-server":"decentralized"} architecture`}>
         {mode==="cs"?<ClientServerCanvas/>:<DecentralizedCanvas/>}
       </SceneCard>
-      <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
         {[
           {k:"cs",color:"#a855f7",label:"Client-Server",body:"Central authority. Simple to manage but a SPOF concentrates all load and risk on one machine."},
           {k:"dc",color:"#10b981",label:"Decentralized",body:"No central hub. Nodes route directly. Resilient — one failure doesn't cascade through the system."},
         ].map(x=>(
-          <div key={x.k} className="bg-slate-900 border border-slate-700 rounded-lg p-4">
+          <div key={x.k} className="bg-slate-900 border border-slate-700 rounded-lg p-3 sm:p-4">
             <div className="font-semibold mb-1" style={{color:x.color}}>{x.label}</div>
             <div className="text-slate-200 leading-relaxed">{x.body}</div>
           </div>
@@ -826,11 +853,11 @@ function ModelsSection() {
 function HardwareSection() {
   const [view, setView] = useState("hw");
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <div className="flex gap-2">
         {[["hw","Hardware"],["sw","Software Stack"]].map(([k,v])=>(
           <button key={k} onClick={()=>setView(k)}
-            className={`px-4 py-2 rounded-lg font-mono text-sm border transition-all ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-mono text-xs sm:text-sm border transition-all ${
               view===k?"bg-cyan-500/20 border-cyan-500 text-cyan-300":"bg-slate-800/80 border-slate-700 text-slate-200 hover:border-cyan-600 hover:text-white"
             }`}>{v}</button>
         ))}
@@ -844,10 +871,10 @@ function HardwareSection() {
 
 function FallaciesSection() {
   return (
-    <div className="space-y-5">
-      <div className="bg-slate-900 border border-red-800/60 rounded-xl p-5">
+    <div className="space-y-3 sm:space-y-5">
+      <div className="bg-slate-900 border border-red-800/60 rounded-xl p-4 sm:p-5">
         <h3 className="text-red-400 font-mono font-bold mb-2">⚠ Fallacy #1: The Network is Reliable</h3>
-        <p className="text-white text-sm leading-relaxed">
+        <p className="text-white text-xs sm:text-sm leading-relaxed">
           Engineers often design as if the network is perfect. In reality, packets are dropped silently,
           connections time out, and links fail. Every component must implement retransmission, idempotency,
           and acknowledgement logic — or accept silent data loss in production.
@@ -1242,7 +1269,7 @@ function SystemModelsSection() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 sm:space-y-5">
       {/* Top-level model tabs */}
       <div className="flex gap-2 flex-wrap">
         {tabs.map(t=>(
@@ -1258,8 +1285,8 @@ function SystemModelsSection() {
       </div>
 
       {/* Description card */}
-      <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
-        <p className="text-white text-sm leading-relaxed">{descriptions[model]}</p>
+      <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 sm:p-5">
+        <p className="text-white text-xs sm:text-sm leading-relaxed">{descriptions[model]}</p>
       </div>
 
       {/* Fundamental sub-tabs */}
@@ -1267,7 +1294,7 @@ function SystemModelsSection() {
         <div className="flex gap-2">
           {funSubTabs.map(t=>(
             <button key={t.id} onClick={()=>setFunSub(t.id)}
-              className={`px-3 py-1.5 rounded-md font-mono text-xs border transition-all ${
+              className={`px-2 py-1.5 sm:px-3 rounded-md font-mono text-xs border transition-all ${
                 funSub===t.id
                   ?"bg-purple-500/20 border-purple-500 text-purple-300"
                   :"bg-slate-800 border-slate-700 text-slate-200 hover:border-purple-600"
@@ -1275,7 +1302,7 @@ function SystemModelsSection() {
               {t.label}
             </button>
           ))}
-          <span className="ml-2 text-xs font-mono text-slate-300 self-center">{funDescriptions[funSub]}</span>
+          <span className="hidden sm:inline ml-2 text-xs font-mono text-slate-300 self-center">{funDescriptions[funSub]}</span>
         </div>
       )}
 
@@ -1291,7 +1318,7 @@ function SystemModelsSection() {
       </SceneCard>
 
       {/* Comparison grid */}
-      <div className="grid grid-cols-3 gap-3 text-xs font-mono">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
         {[
           {color:"#22d3ee",label:"Physical",
            body:"Hardware nodes + network links. Shows where things physically are. Answers: what machines exist and how are they wired?"},
@@ -1300,7 +1327,7 @@ function SystemModelsSection() {
           {color:"#f59e0b",label:"Fundamental",
            body:"Universal concerns: interaction (messaging), failure (crash/byzantine), security (auth/encryption). Applies to any architecture."},
         ].map(x=>(
-          <div key={x.label} className="bg-slate-900 border border-slate-700 rounded-lg p-4">
+          <div key={x.label} className="bg-slate-900 border border-slate-700 rounded-lg p-3 sm:p-4">
             <div className="font-bold mb-1.5" style={{color:x.color}}>{x.label}</div>
             <div className="text-slate-200 leading-relaxed">{x.body}</div>
           </div>
@@ -1561,10 +1588,10 @@ function HowItWorksSection() {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-cyan-400 font-mono text-lg mb-3">How Distributed Systems Work</h2>
-        <p className="text-white text-sm leading-relaxed">
+    <div className="space-y-3 sm:space-y-5">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 sm:p-6">
+        <h2 className="text-cyan-400 font-mono text-base sm:text-lg mb-2 sm:mb-3">How Distributed Systems Work</h2>
+        <p className="text-white text-xs sm:text-sm leading-relaxed">
           Every HTTP request you make traverses a chain of specialised components — each one a node in the
           distributed system. Watch the animation below follow a single request from your browser all the way
           to the database and back, automatically cycling through each phase.
@@ -1577,13 +1604,13 @@ function HowItWorksSection() {
 
       <div className="space-y-3">
         {steps.map(s=>(
-          <div key={s.num} className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex gap-4 items-start">
+          <div key={s.num} className="bg-slate-900 border border-slate-700 rounded-xl p-3 sm:p-4 flex gap-3 sm:gap-4 items-start">
             <span className="text-2xl font-bold shrink-0 mt-0.5" style={{color:s.color, textShadow:`0 0 12px ${s.color}88`}}>
               {s.num}
             </span>
             <div>
               <div className="font-bold text-sm mb-1" style={{color:s.color}}>{s.title}</div>
-              <p className="text-white text-sm leading-relaxed">{s.body}</p>
+              <p className="text-white text-xs sm:text-sm leading-relaxed">{s.body}</p>
             </div>
           </div>
         ))}
@@ -1593,197 +1620,374 @@ function HowItWorksSection() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// APP SHELL
+// RESPONSIVE APP SHELL
+// Breakpoints: mobile < 640px | tablet 640-1023px | desktop ≥ 1024px
+// Mobile:  bottom tab bar + slide-over drawer for full nav
+// Tablet:  icon-only slim sidebar (48px) + main content
+// Desktop: full 256px sidebar + main content
 // ═══════════════════════════════════════════════════════════
+
+// Hook: current breakpoint
+function useBreakpoint() {
+  const get = () => {
+    const w = window.innerWidth;
+    if(w < 640)  return "mobile";
+    if(w < 1024) return "tablet";
+    return "desktop";
+  };
+  const [bp, setBp] = useState(get);
+  useEffect(() => {
+    const h = () => setBp(get());
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return bp;
+}
+
 const NAV=[
-  {id:"intro",    label:"01 Introduction",   icon:"🌐"},
-  {id:"howitworks",label:"02 How It Works",  icon:"⚡"},
-  {id:"types",    label:"03 Types",           icon:"🖥"},
-  {id:"models",   label:"04 Arch Models",     icon:"⬡"},
-  {id:"sysmodels",label:"05 System Models",   icon:"⚛"},
-  {id:"hw",       label:"06 HW & SW",         icon:"⚙"},
-  {id:"fallacies",label:"07 Design Issues",   icon:"⚠"},
+  {id:"intro",     label:"01 Introduction",  icon:"🌐", short:"Intro"},
+  {id:"howitworks",label:"02 How It Works",  icon:"⚡", short:"How"},
+  {id:"types",     label:"03 Types",          icon:"🖥", short:"Types"},
+  {id:"models",    label:"04 Arch Models",    icon:"⬡", short:"Models"},
+  {id:"sysmodels", label:"05 System Models",  icon:"⚛", short:"Sys"},
+  {id:"hw",        label:"06 HW & SW",        icon:"⚙", short:"HW"},
+  {id:"fallacies", label:"07 Design Issues",  icon:"⚠", short:"Issues"},
 ];
 
 export default function App(){
-  const [active,setActive]=useState("intro");
-  const [dark,setDark]=useState(true);
+  const [active,setActive]    = useState("intro");
+  const [dark,setDark]        = useState(true);
+  const [drawerOpen,setDrawer]= useState(false);
+  const bp                    = useBreakpoint();
 
   const pages={
-    intro:      {title:"Introduction & Definition",           body:<IntroSection/>},
-    howitworks: {title:"How Distributed Systems Work",        body:<HowItWorksSection/>},
-    types:      {title:"Types of Distributed Systems",        body:<TypesSection/>},
-    models:     {title:"Distributed System Models",           body:<ModelsSection/>},
-    sysmodels:  {title:"System Models: Physical · Architectural · Fundamental", body:<SystemModelsSection/>},
-    hw:         {title:"Hardware & Software Concepts",        body:<HardwareSection/>},
-    fallacies:  {title:"Design Issues & Fallacies",           body:<FallaciesSection/>},
+    intro:      {title:"Introduction & Definition",                                     body:<IntroSection/>},
+    howitworks: {title:"How Distributed Systems Work",                                  body:<HowItWorksSection/>},
+    types:      {title:"Types of Distributed Systems",                                  body:<TypesSection/>},
+    models:     {title:"Distributed System Models",                                     body:<ModelsSection/>},
+    sysmodels:  {title:"System Models: Physical · Architectural · Fundamental",         body:<SystemModelsSection/>},
+    hw:         {title:"Hardware & Software Concepts",                                  body:<HardwareSection/>},
+    fallacies:  {title:"Design Issues & Fallacies",                                     body:<FallaciesSection/>},
   };
 
-  // ── theme tokens ────────────────────────────────────────
+  // ── theme tokens ──────────────────────────────────────────────
   const T = dark ? {
-    bg:        "#050f1f",
-    sidebar:   "#040e1e",
-    border:    "#334155",
-    cardBg:    "#0f172a",
-    cardBorder:"#334155",
-    text:      "#f1f5f9",
-    textMuted: "#94a3b8",
-    navActive: "bg-cyan-500/15 border border-cyan-500/40 text-cyan-300",
-    navIdle:   "border border-transparent text-slate-300 hover:text-white hover:bg-slate-800/60",
-    scrollTrack:"#020b18",
-    scrollThumb:"#1e293b",
-    toggleBg:  "#1e293b",
-    toggleIcon:"🌙",
-    toggleLabel:"Dark",
+    bg:         "#050f1f",
+    sidebar:    "#040e1e",
+    border:     "#334155",
+    text:       "#f1f5f9",
+    textMuted:  "#94a3b8",
+    card:       "#0f172a",
+    cardBorder: "#334155",
+    scrollTk:   "#020b18",
+    scrollTh:   "#1e293b",
+    navActive:  {background:"rgba(34,211,238,0.12)",border:"1px solid rgba(34,211,238,0.35)",color:"#67e8f9"},
+    navIdle:    {background:"transparent",border:"1px solid transparent",color:"#94a3b8"},
+    toggleBg:   "#1e293b",
+    toggleFg:   "#f1f5f9",
+    toggleIcon: "☀️",
+    toggleLabel:"Light Mode",
+    bottomBar:  "#040e1e",
+    drawer:     "#040e1e",
   } : {
-    bg:        "#f0f4f8",
-    sidebar:   "#ffffff",
-    border:    "#cbd5e1",
-    cardBg:    "#ffffff",
-    cardBorder:"#e2e8f0",
-    text:      "#0f172a",
-    textMuted: "#475569",
-    navActive: "bg-cyan-500/20 border border-cyan-600 text-cyan-700",
-    navIdle:   "border border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100",
-    scrollTrack:"#e2e8f0",
-    scrollThumb:"#94a3b8",
-    toggleBg:  "#e2e8f0",
-    toggleIcon:"☀️",
-    toggleLabel:"Light",
+    bg:         "#f0f4f8",
+    sidebar:    "#ffffff",
+    border:     "#cbd5e1",
+    text:       "#0f172a",
+    textMuted:  "#475569",
+    card:       "#ffffff",
+    cardBorder: "#e2e8f0",
+    scrollTk:   "#e2e8f0",
+    scrollTh:   "#94a3b8",
+    navActive:  {background:"rgba(8,145,178,0.12)",border:"1px solid #0891b2",color:"#0e7490"},
+    navIdle:    {background:"transparent",border:"1px solid transparent",color:"#475569"},
+    toggleBg:   "#e2e8f0",
+    toggleFg:   "#0f172a",
+    toggleIcon: "🌙",
+    toggleLabel:"Dark Mode",
+    bottomBar:  "#ffffff",
+    drawer:     "#ffffff",
   };
+
+  const navigate = (id) => { setActive(id); setDrawer(false); window.scrollTo(0,0); };
+
+  // sidebar content (shared between desktop sidebar & mobile drawer)
+  const SidebarContent = ({ compact=false }) => (
+    <>
+      {/* Branding */}
+      <div style={{padding: compact?"16px 8px":"24px", borderBottom:`1px solid ${T.border}`,
+        textAlign: compact?"center":"left"}}>
+        {!compact && (
+          <div style={{fontSize:"10px",color:T.textMuted,fontFamily:"monospace",
+            marginBottom:"4px",letterSpacing:"0.1em",textTransform:"uppercase"}}>
+            Interactive Textbook
+          </div>
+        )}
+        <h1 style={{color:"#22d3ee",fontWeight:700,
+          fontSize: compact?"13px":"18px",
+          lineHeight:1.3,fontFamily:"'Space Grotesk',sans-serif",margin:0}}>
+          {compact ? "DS" : <span>Distributed<br/>Systems</span>}
+        </h1>
+        {!compact && (
+          <div style={{marginTop:"10px",display:"flex",gap:"5px",justifyContent:"flex-start"}}>
+            {["#22d3ee","#a855f7","#10b981"].map((c,i)=>(
+              <span key={c} style={{width:"6px",height:"6px",borderRadius:"50%",background:c,
+                display:"inline-block",animation:`pulse 2s ${i*0.35}s infinite`}}/>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Nav links */}
+      <nav style={{flex:1,padding: compact?"8px 4px":"10px",
+        display:"flex",flexDirection:"column",gap:"2px",overflowY:"auto"}}>
+        {NAV.map(s=>{
+          const isActive = active===s.id;
+          return (
+            <button key={s.id} onClick={()=>navigate(s.id)}
+              title={s.label}
+              style={{
+                display:"flex",alignItems:"center",
+                gap: compact?"0":"10px",
+                justifyContent: compact?"center":"flex-start",
+                padding: compact?"10px 4px":"8px 12px",
+                borderRadius:"8px",cursor:"pointer",
+                fontFamily:"'JetBrains Mono',monospace",
+                fontSize: compact?"18px":"13px",
+                fontWeight: isActive?600:400,
+                transition:"all 0.15s",
+                width:"100%",
+                ...( isActive ? T.navActive : T.navIdle ),
+              }}>
+              <span style={{fontSize: compact?"18px":"16px",flexShrink:0}}>{s.icon}</span>
+              {!compact && <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.label}</span>}
+              {!compact && isActive && <span style={{marginLeft:"auto",color:"#22d3ee",fontSize:"10px"}}>▶</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Footer: theme toggle */}
+      <div style={{padding: compact?"8px 4px":"14px",borderTop:`1px solid ${T.border}`,
+        display:"flex",flexDirection:"column",gap:"8px",alignItems: compact?"center":"stretch"}}>
+        <button onClick={()=>setDark(d=>!d)} title={T.toggleLabel}
+          style={{display:"flex",alignItems:"center",gap:"8px",
+            padding: compact?"8px":"8px 12px",
+            borderRadius:"8px",cursor:"pointer",border:"none",
+            background:T.toggleBg,color:T.toggleFg,
+            fontFamily:"'JetBrains Mono',monospace",fontSize:"11px",fontWeight:600,
+            width:"100%",justifyContent: compact?"center":"flex-start",
+            transition:"all 0.2s"}}>
+          <span style={{fontSize:"15px"}}>{T.toggleIcon}</span>
+          {!compact && <span>{T.toggleLabel}</span>}
+          {!compact && (
+            <span style={{marginLeft:"auto",width:"32px",height:"17px",borderRadius:"9px",
+              background: dark?"rgba(34,211,238,0.25)":"rgba(100,116,139,0.25)",
+              border: dark?"1px solid rgba(34,211,238,0.5)":"1px solid #94a3b8",
+              position:"relative",display:"inline-block",flexShrink:0}}>
+              <span style={{position:"absolute",top:"2px",
+                left: dark?"17px":"2px",
+                width:"11px",height:"11px",borderRadius:"50%",
+                background: dark?"#22d3ee":"#64748b",transition:"left 0.2s"}}/>
+            </span>
+          )}
+        </button>
+        {!compact && (
+          <div style={{fontSize:"9px",color:T.textMuted,fontFamily:"monospace",textAlign:"center"}}>
+            canvas · 60fps · retina
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // ── MOBILE BOTTOM NAV (shows 5 most used, + menu for rest) ────
+  const MobileBottomNav = () => {
+    const visible = NAV.slice(0,5);
+    return (
+      <div style={{
+        position:"fixed",bottom:0,left:0,right:0,zIndex:50,
+        background:T.bottomBar,borderTop:`1px solid ${T.border}`,
+        display:"flex",alignItems:"stretch",
+        paddingBottom:"env(safe-area-inset-bottom,0px)",
+      }}>
+        {visible.map(s=>{
+          const isA = active===s.id;
+          return (
+            <button key={s.id} onClick={()=>navigate(s.id)}
+              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+                justifyContent:"center",padding:"8px 2px",gap:"3px",
+                background:"transparent",border:"none",cursor:"pointer",
+                color: isA?"#22d3ee":T.textMuted,
+                transition:"color 0.15s",
+                borderTop: isA?"2px solid #22d3ee":"2px solid transparent"}}>
+              <span style={{fontSize:"18px",lineHeight:1}}>{s.icon}</span>
+              <span style={{fontSize:"9px",fontFamily:"monospace",fontWeight:isA?700:400}}>
+                {s.short}
+              </span>
+            </button>
+          );
+        })}
+        {/* "More" button */}
+        <button onClick={()=>setDrawer(true)}
+          style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+            justifyContent:"center",padding:"8px 2px",gap:"3px",
+            background:"transparent",border:"none",cursor:"pointer",
+            color:T.textMuted,borderTop:"2px solid transparent"}}>
+          <span style={{fontSize:"18px",lineHeight:1}}>☰</span>
+          <span style={{fontSize:"9px",fontFamily:"monospace"}}>More</span>
+        </button>
+      </div>
+    );
+  };
+
+  // ── MOBILE DRAWER ─────────────────────────────────────────────
+  const MobileDrawer = () => (
+    <>
+      {/* Backdrop */}
+      <div onClick={()=>setDrawer(false)} style={{
+        position:"fixed",inset:0,zIndex:60,
+        background:"rgba(0,0,0,0.65)",
+        opacity: drawerOpen?1:0,
+        pointerEvents: drawerOpen?"auto":"none",
+        transition:"opacity 0.25s",
+      }}/>
+      {/* Panel */}
+      <div style={{
+        position:"fixed",left:0,top:0,bottom:0,zIndex:70,
+        width:"280px",
+        background:T.drawer,
+        borderRight:`1px solid ${T.border}`,
+        display:"flex",flexDirection:"column",
+        transform: drawerOpen?"translateX(0)":"translateX(-100%)",
+        transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",
+        overflowY:"auto",
+      }}>
+        {/* Close button */}
+        <div style={{display:"flex",justifyContent:"flex-end",padding:"12px"}}>
+          <button onClick={()=>setDrawer(false)}
+            style={{background:"transparent",border:"none",color:T.textMuted,
+              fontSize:"20px",cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+        <SidebarContent compact={false}/>
+      </div>
+    </>
+  );
+
+  // ── RENDER ────────────────────────────────────────────────────
+  const isDesktop = bp === "desktop";
+  const isTablet  = bp === "tablet";
+  const isMobile  = bp === "mobile";
 
   return (
     <div style={{
-      minHeight:"100vh", background:T.bg, color:T.text,
+      minHeight:"100vh",background:T.bg,color:T.text,
       fontFamily:"'JetBrains Mono','Fira Code',monospace",
-      display:"flex",
+      display:"flex",position:"relative",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Space+Grotesk:wght@400;600;700&display=swap');
-        ::-webkit-scrollbar{width:4px;}
-        ::-webkit-scrollbar-track{background:${T.scrollTrack};}
-        ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
         *{box-sizing:border-box;}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-track{background:${T.scrollTk};}
+        ::-webkit-scrollbar-thumb{background:${T.scrollTh};border-radius:2px;}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        ${!dark ? `
+          .bg-slate-900{background:#ffffff!important}
+          .bg-slate-950{background:#f8fafc!important}
+          .border-slate-700{border-color:#cbd5e1!important}
+          .border-slate-600{border-color:#cbd5e1!important}
+          .border-slate-800{border-color:#e2e8f0!important}
+          .text-slate-200{color:#1e293b!important}
+          .text-slate-300{color:#334155!important}
+          .text-slate-400{color:#475569!important}
+          .text-white{color:#0f172a!important}
+          .bg-slate-800\\/60,.bg-slate-800\\/80{background:#f1f5f9!important}
+        ` : ""}
       `}</style>
 
-      {/* ── SIDEBAR ─────────────────────────────────────── */}
-      <aside style={{
-        width:"256px", minHeight:"100vh", background:T.sidebar,
-        borderRight:`1px solid ${T.border}`,
-        display:"flex", flexDirection:"column", flexShrink:0,
+      {/* ── DESKTOP SIDEBAR ─────────────────────────── */}
+      {isDesktop && (
+        <aside style={{
+          width:"256px",minHeight:"100vh",background:T.sidebar,
+          borderRight:`1px solid ${T.border}`,
+          display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,
+          height:"100vh",overflowY:"auto",
+        }}>
+          <SidebarContent compact={false}/>
+        </aside>
+      )}
+
+      {/* ── TABLET ICON SIDEBAR ─────────────────────── */}
+      {isTablet && (
+        <aside style={{
+          width:"56px",minHeight:"100vh",background:T.sidebar,
+          borderRight:`1px solid ${T.border}`,
+          display:"flex",flexDirection:"column",flexShrink:0,
+          position:"sticky",top:0,height:"100vh",
+        }}>
+          <SidebarContent compact={true}/>
+        </aside>
+      )}
+
+      {/* ── MOBILE DRAWER + BOTTOM NAV ──────────────── */}
+      {isMobile && <MobileDrawer/>}
+
+      {/* ── MAIN CONTENT ────────────────────────────── */}
+      <main style={{
+        flex:1,overflowY:"auto",overflowX:"hidden",
+        paddingBottom: isMobile?"72px":"0",
       }}>
-        {/* Header */}
-        <div style={{padding:"24px", borderBottom:`1px solid ${T.border}`}}>
-          <div style={{fontSize:"10px", color:T.textMuted, fontFamily:"monospace",
-            marginBottom:"4px", letterSpacing:"0.1em", textTransform:"uppercase"}}>
-            Interactive Textbook
-          </div>
-          <h1 style={{color:"#22d3ee", fontWeight:700, fontSize:"18px",
-            lineHeight:1.3, fontFamily:"'Space Grotesk',sans-serif", margin:0}}>
-            Distributed<br/>Systems
-          </h1>
-          <div style={{marginTop:"12px", display:"flex", gap:"6px"}}>
-            {["#22d3ee","#a855f7","#10b981"].map((c,i)=>(
-              <span key={c} className="animate-pulse"
-                style={{width:"6px",height:"6px",borderRadius:"50%",background:c,
-                  display:"inline-block",animationDelay:`${i*0.35}s`}}/>
-            ))}
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav style={{flex:1, padding:"12px", display:"flex", flexDirection:"column", gap:"2px"}}>
-          {NAV.map(s=>(
-            <button key={s.id} onClick={()=>setActive(s.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg transition-all duration-150 flex items-center gap-3 text-sm ${
-                active===s.id ? T.navActive : T.navIdle
-              }`}
-              style={{background:"transparent", cursor:"pointer"}}>
-              <span style={{fontSize:"16px", width:"20px", flexShrink:0}}>{s.icon}</span>
-              <span>{s.label}</span>
-              {active===s.id && <span style={{marginLeft:"auto", color:"#22d3ee", fontSize:"11px"}}>▶</span>}
+        {/* Mobile top header bar */}
+        {isMobile && (
+          <div style={{
+            position:"sticky",top:0,zIndex:30,
+            background:T.sidebar,borderBottom:`1px solid ${T.border}`,
+            display:"flex",alignItems:"center",justifyContent:"space-between",
+            padding:"12px 16px",
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <button onClick={()=>setDrawer(true)}
+                style={{background:"transparent",border:"none",color:"#22d3ee",
+                  fontSize:"20px",cursor:"pointer",lineHeight:1}}>☰</button>
+              <span style={{color:"#22d3ee",fontWeight:700,fontSize:"14px",
+                fontFamily:"'Space Grotesk',sans-serif"}}>Distributed Systems</span>
+            </div>
+            <button onClick={()=>setDark(d=>!d)}
+              style={{background:"transparent",border:"none",fontSize:"18px",cursor:"pointer"}}>
+              {T.toggleIcon}
             </button>
-          ))}
-        </nav>
-
-        {/* Footer: toggle + version */}
-        <div style={{padding:"16px", borderTop:`1px solid ${T.border}`,
-          display:"flex", flexDirection:"column", gap:"10px"}}>
-
-          {/* ── THEME TOGGLE BUTTON ── */}
-          <button
-            onClick={()=>setDark(d=>!d)}
-            style={{
-              display:"flex", alignItems:"center", gap:"8px",
-              padding:"8px 12px", borderRadius:"8px", cursor:"pointer", border:"none",
-              background: dark ? "#1e293b" : "#e2e8f0",
-              color: dark ? "#f1f5f9" : "#1e293b",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:"11px",
-              fontWeight:600, width:"100%", transition:"all 0.2s",
-            }}
-          >
-            <span style={{fontSize:"15px"}}>{T.toggleIcon}</span>
-            <span>{T.toggleLabel} Mode</span>
-            {/* pill track */}
-            <span style={{
-              marginLeft:"auto", width:"34px", height:"18px", borderRadius:"9px",
-              background: dark ? "#22d3ee40" : "#64748b40",
-              border: dark ? "1px solid #22d3ee80" : "1px solid #94a3b8",
-              position:"relative", display:"inline-block", flexShrink:0,
-            }}>
-              <span style={{
-                position:"absolute", top:"2px",
-                left: dark ? "18px" : "2px",
-                width:"12px", height:"12px", borderRadius:"50%",
-                background: dark ? "#22d3ee" : "#64748b",
-                transition:"left 0.2s",
-              }}/>
-            </span>
-          </button>
-
-          <div style={{fontSize:"10px", color:T.textMuted, fontFamily:"monospace"}}>
-            canvas · 60fps · retina
           </div>
-        </div>
-      </aside>
+        )}
 
-      {/* ── MAIN ─────────────────────────────────────────── */}
-      <main style={{flex:1, overflowY:"auto"}}>
-        <div style={{maxWidth:"768px", margin:"0 auto", padding:"32px"}}>
-          <div style={{marginBottom:"28px"}}>
-            <div style={{fontSize:"10px", color:T.textMuted, fontFamily:"monospace",
-              marginBottom:"4px", textTransform:"uppercase", letterSpacing:"0.1em"}}>
+        <div style={{
+          maxWidth: isDesktop?"780px":isTablet?"700px":"100%",
+          margin:"0 auto",
+          padding: isMobile?"16px 12px 24px":isTablet?"24px 20px":"32px 28px",
+        }}>
+          {/* Chapter header */}
+          <div style={{marginBottom: isMobile?"18px":"28px"}}>
+            <div style={{fontSize:"10px",color:T.textMuted,fontFamily:"monospace",
+              marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.1em"}}>
               Chapter {NAV.findIndex(s=>s.id===active)+1} / {NAV.length}
             </div>
-            <h2 style={{fontSize:"24px", fontWeight:700, color:T.text, margin:0,
-              fontFamily:"'Space Grotesk',sans-serif"}}>
+            <h2 style={{
+              fontSize: isMobile?"18px":isTablet?"20px":"24px",
+              fontWeight:700,color:T.text,margin:0,
+              fontFamily:"'Space Grotesk',sans-serif",lineHeight:1.3,
+            }}>
               {pages[active].title}
             </h2>
-            <div style={{marginTop:"8px", height:"1px",
+            <div style={{marginTop:"8px",height:"1px",
               background:"linear-gradient(to right, rgba(34,211,238,0.6), rgba(168,85,247,0.3), transparent)"}}/>
           </div>
-
-          {/* inject light-mode overrides via a style tag so child components adapt */}
-          {!dark && (
-            <style>{`
-              .bg-slate-900 { background: #ffffff !important; }
-              .bg-slate-800\\/60 { background: #f8fafc !important; }
-              .border-slate-700 { border-color: #cbd5e1 !important; }
-              .border-slate-800 { border-color: #e2e8f0 !important; }
-              .text-slate-200 { color: #1e293b !important; }
-              .text-slate-300 { color: #334155 !important; }
-              .text-slate-400 { color: #475569 !important; }
-              .text-white { color: #0f172a !important; }
-              .bg-slate-800\\/80 { background: #f1f5f9 !important; }
-              .border-slate-700 { border-color: #cbd5e1 !important; }
-              .hover\\:border-slate-500:hover { border-color: #94a3b8 !important; }
-              .hover\\:text-white:hover { color: #0f172a !important; }
-            `}</style>
-          )}
 
           <div key={active}>{pages[active].body}</div>
         </div>
       </main>
+
+      {/* ── MOBILE BOTTOM NAV ───────────────────────── */}
+      {isMobile && <MobileBottomNav/>}
     </div>
   );
 }

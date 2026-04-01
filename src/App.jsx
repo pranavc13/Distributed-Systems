@@ -8,14 +8,14 @@ function App() {
   const [count, setCount] = useState(0)
 
   return (
-    <>
-      <section id="center">
+    <main className="page-shell">
+      <section id="center" className="hero-section">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
           <img src={reactLogo} className="framework" alt="React logo" />
           <img src={viteLogo} className="vite" alt="Vite logo" />
         </div>
-        <div>
+        <div className="hero-copy">
           <h1>Get started</h1>
           <p>
             Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
@@ -31,14 +31,14 @@ function App() {
 
       <div className="ticks"></div>
 
-      <section id="next-steps">
-        <div id="docs">
+      <section id="next-steps" className="cards-grid">
+        <article id="docs" className="info-card">
           <svg className="icon" role="presentation" aria-hidden="true">
             <use href="/icons.svg#documentation-icon"></use>
           </svg>
           <h2>Documentation</h2>
           <p>Your questions, answered</p>
-          <ul>
+          <ul className="links-list">
             <li>
               <a href="https://vite.dev/" target="_blank">
                 <img className="logo" src={viteLogo} alt="" />
@@ -52,14 +52,14 @@ function App() {
               </a>
             </li>
           </ul>
-        </div>
-        <div id="social">
+        </article>
+        <article id="social" className="info-card">
           <svg className="icon" role="presentation" aria-hidden="true">
             <use href="/icons.svg#social-icon"></use>
           </svg>
           <h2>Connect with us</h2>
           <p>Join the Vite community</p>
-          <ul>
+          <ul className="links-list">
             <li>
               <a href="https://github.com/vitejs/vite" target="_blank">
                 <svg
@@ -109,12 +109,12 @@ function App() {
               </a>
             </li>
           </ul>
-        </div>
+        </article>
       </section>
 
       <div className="ticks"></div>
       <section id="spacer"></section>
-    </>
+    </main>
   )
 }
 
